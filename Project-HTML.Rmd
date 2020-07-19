@@ -1,0 +1,70 @@
+---
+title: "Practical Machine Learning Project"
+author: "Jon Brophy"
+date: "7/18/2020"
+output: html_document
+---
+
+## Overview
+"Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it." 
+
+The data set will consist of a training and test set, and will be used to predict the "classe" variable from the training set. 
+
+## Load and Check Data
+```{r, echo=T}
+library(caret)
+Train <- read.csv("pml-training.csv")
+Test <- read.csv("pml-testing.csv")
+NA_List_Train <- sapply(Train, function(x) sum(is.na(x))/length(x))
+NA_List_Train <- NA_List_Train[NA_List_Train > 0 ]
+NA_List_Test <- sapply(Test, function(x) sum(is.na(x))/length(x))
+NA_List_Test <- NA_List_Test[NA_List_Test > 0 ]
+```
+Missing 98% of data in a number of fields in Train, and 100% in a number of fields in Test. I will exclude those fields from training and test. Additionally, first 7 fields are not related to the rest of the data so will also remove. 
+```{r}
+Train <- Train[, -which(names(Train) %in% names(NA_List_Train))]
+Train <- Train[, -which(names(Train) %in% names(NA_List_Test))]
+Test <- Test[, -which(names(Test) %in% names(NA_List_Train))]
+Test <- Test[, -which(names(Test) %in% names(NA_List_Test))]
+Train <- Train[, -c(1:7)]
+Test <- Test[, -c(1:7)]
+```
+Check Train for highly correlated variables, excluding classe:
+```{r}
+corVar <- cor(Train[, -53])
+HighCor <- findCorrelation(corVar, .9)
+HighCor <- names(Train)[HighCor]
+Train <- Train[, -which(names(Train) %in% HighCor)]
+Test <- Test[, -which(names(Test) %in% HighCor)]
+```
+
+## Build Models
+For this project I will try several different algorithms, including:
+    Random Forest
+    Gradient Boosted Machine (GBM)
+    Support Vector Machine (SVM)
+I will use 5 fold cross validation to determine which model performs best and will be selected to be used on the test data. 
+
+```{r, eval=F}
+control <- trainControl(method = "cv", number = 5, allowParallel = T)
+set.seed(100)
+rf_model <- train(classe ~., data = Train, method = "rf", trControl = control); saveRDS(rf_model, "rf_model.RDS")
+set.seed(100)
+gbm_model <- train(classe ~., data = Train, method = "gbm", trControl = control, verbose = F); saveRDS(gbm_model, "gbm_model.RDS")
+set.seed(100)
+svm_model <- train(classe ~., data = Train, method = "svmRadial", trControl = control); saveRDS(svm_model, "svm_model.RDS")
+```
+```{r}
+rf_model <-readRDS("rf_model.RDS"); gbm_model <- readRDS("gbm_model.RDS")
+svm_model <-readRDS("svm_model.RDS")
+results <- resamples(list(RF=rf_model, GBM=gbm_model, SVM=svm_model))
+summary(results)
+```
+Accuracy is highest with the RF model at over 99% (less than 1% expected out of sample error), so that will be chosen for the test data. 
+
+```{r}
+TestPreds <- predict(rf_model, newdata=Test)
+TestPreds
+```
+
+
